@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: mon-app
-        image: harbor.local/library/mon-app:5ee5646e1fd7d75ddb09dfda6950d6083bda714e
+        image: harbor.local/library/mon-app:a230cf417324d81e4e5812b0e5e1d8d7054cb9ce
         ports:
         - containerPort: 80
         imagePullPolicy: Always
