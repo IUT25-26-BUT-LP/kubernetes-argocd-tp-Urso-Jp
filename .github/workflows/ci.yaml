@@ -23,12 +23,12 @@ jobs:
 
       # ─── ÉTAPE 1 : Pull l'image depuis DockerHub ───────────────────────────
       - name: Pull base image from DockerHub
-        run: docker pull ${{ env.BASE_IMAGE }}
+        run: sudo docker pull ${{ env.BASE_IMAGE }}
 
       # ─── ÉTAPE 2 : Scan Trivy sur l'image DockerHub ────────────────────────
       - name: Scan base image with Trivy (DockerHub)
         run: |
-          docker run --rm \
+          sudo docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             aquasec/trivy:latest image \
             --exit-code 0 \
@@ -40,21 +40,21 @@ jobs:
       - name: Login to Harbor
         run: |
           echo "${{ secrets.HARBOR_PASSWORD }}" | \
-            docker login ${{ env.HARBOR_URL }} \
+            sudo docker login ${{ env.HARBOR_URL }} \
             --username ${{ secrets.HARBOR_USER }} \
             --password-stdin
 
       - name: Tag and push base image to Harbor
         run: |
-          docker tag ${{ env.BASE_IMAGE }} \
+          sudo docker tag ${{ env.BASE_IMAGE }} \
             ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:base
-          docker push \
+          sudo docker push \
             ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:base
 
       # ─── ÉTAPE 4 : Build le Dockerfile de l'app ────────────────────────────
       - name: Build application Docker image
         run: |
-          docker build \
+          sudo docker build \
             -t ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:${{ github.sha }} \
             -t ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:latest \
             -f Dockerfile .
@@ -62,7 +62,7 @@ jobs:
       # ─── ÉTAPE 5 : Scan Trivy sur l'image buildée ──────────────────────────
       - name: Scan built image with Trivy
         run: |
-          docker run --rm \
+          sudo docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             aquasec/trivy:latest image \
             --exit-code 0 \
@@ -73,9 +73,9 @@ jobs:
       # ─── ÉTAPE 6 : Push l'image finale vers Harbor ─────────────────────────
       - name: Push final image to Harbor
         run: |
-          docker push \
+          sudo docker push \
             ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:${{ github.sha }}
-          docker push \
+          sudo docker push \
             ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:latest
 
       # ─── ÉTAPE 7 : Mise à jour du manifest deployment.yaml ─────────────────
