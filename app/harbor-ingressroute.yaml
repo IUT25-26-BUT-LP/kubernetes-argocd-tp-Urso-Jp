@@ -1,0 +1,39 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: harbor-ingress
+  namespace: harbor
+spec:
+  entryPoints:
+    - web
+  routes:
+    # Registry API (docker push/pull) → harbor-core
+    - match: Host(`harbor.local`) && PathPrefix(`/v2`)
+      kind: Rule
+      services:
+        - name: harbor-core
+          port: 80
+    # Harbor REST API → harbor-core
+    - match: Host(`harbor.local`) && PathPrefix(`/api`)
+      kind: Rule
+      services:
+        - name: harbor-core
+          port: 80
+    # Harbor service endpoints → harbor-core
+    - match: Host(`harbor.local`) && PathPrefix(`/service`)
+      kind: Rule
+      services:
+        - name: harbor-core
+          port: 80
+    # Helm chart repository → harbor-core
+    - match: Host(`harbor.local`) && PathPrefix(`/chartrepo`)
+      kind: Rule
+      services:
+        - name: harbor-core
+          port: 80
+    # UI portal (catch-all) → harbor-portal
+    - match: Host(`harbor.local`)
+      kind: Rule
+      services:
+        - name: harbor-portal
+          port: 80

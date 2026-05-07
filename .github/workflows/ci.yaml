@@ -1,0 +1,98 @@
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  HARBOR_URL: harbor.local
+  HARBOR_PROJECT: library
+  APP_NAME: mon-app
+  BASE_IMAGE: traefik/whoami:latest
+
+jobs:
+  devsecops:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+
+      # ─── ÉTAPE 1 : Pull l'image depuis DockerHub ───────────────────────────
+      - name: Pull base image from DockerHub
+        run: docker pull ${{ env.BASE_IMAGE }}
+
+      # ─── ÉTAPE 2 : Scan Trivy sur l'image DockerHub ────────────────────────
+      - name: Scan base image with Trivy (DockerHub)
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --exit-code 0 \
+            --severity HIGH,CRITICAL \
+            --format table \
+            ${{ env.BASE_IMAGE }}
+
+      # ─── ÉTAPE 3 : Push vers Harbor ────────────────────────────────────────
+      - name: Login to Harbor
+        run: |
+          echo "${{ secrets.HARBOR_PASSWORD }}" | \
+            docker login ${{ env.HARBOR_URL }} \
+            --username ${{ secrets.HARBOR_USER }} \
+            --password-stdin
+
+      - name: Tag and push base image to Harbor
+        run: |
+          docker tag ${{ env.BASE_IMAGE }} \
+            ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:base
+          docker push \
+            ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:base
+
+      # ─── ÉTAPE 4 : Build le Dockerfile de l'app ────────────────────────────
+      - name: Build application Docker image
+        run: |
+          docker build \
+            -t ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:${{ github.sha }} \
+            -t ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:latest \
+            -f Dockerfile .
+
+      # ─── ÉTAPE 5 : Scan Trivy sur l'image buildée ──────────────────────────
+      - name: Scan built image with Trivy
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --exit-code 0 \
+            --severity HIGH,CRITICAL \
+            --format table \
+            ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:${{ github.sha }}
+
+      # ─── ÉTAPE 6 : Push l'image finale vers Harbor ─────────────────────────
+      - name: Push final image to Harbor
+        run: |
+          docker push \
+            ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:${{ github.sha }}
+          docker push \
+            ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:latest
+
+      # ─── ÉTAPE 7 : Mise à jour du manifest deployment.yaml ─────────────────
+      - name: Update deployment image tag
+        run: |
+          sed -i \
+            "s|image: ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:.*|image: ${{ env.HARBOR_URL }}/${{ env.HARBOR_PROJECT }}/${{ env.APP_NAME }}:${{ github.sha }}|g" \
+            app/k8s/deployment.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add app/k8s/deployment.yaml
+          git diff --staged --quiet || \
+            git commit -m "ci: update image tag to ${GITHUB_SHA::8}"
+
+      # ─── ÉTAPE 8 : Git push → déclenche ArgoCD ─────────────────────────────
+      - name: Push manifest update to trigger ArgoCD sync
+        run: |
+          git remote set-url origin \
+            https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/${{ github.repository }}.git
+          git push origin HEAD

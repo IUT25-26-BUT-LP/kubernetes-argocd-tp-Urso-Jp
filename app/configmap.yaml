@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  labels:
+    app: nginx
+
+data:
+  index.html: |
+    <html>
+    <head><title>Bienvenue sur Nginx</title></head>
+    <body><h1>Page servie par Kind de Jacky !</h1></body>
+    </html>
